@@ -1,5 +1,6 @@
 import streamlit as st
-from googletrans import Translator, LANGUAGES
+from deep_translator import GoogleTranslator
+from langdetect import detect
 from langdetect import detect
 from gtts import gTTS
 import pandas as pd
@@ -145,3 +146,4 @@ if st.session_state.history:
             🔹 Output: {item['output'][:60]}
             """
         )
+
