@@ -14,7 +14,7 @@ st.set_page_config(
 )
 
 # --------------------------------------------------
-# STABLE LANGUAGE LIST (~40 WORKING LANGUAGES)
+# STABLE LANGUAGE LIST (~40)
 # --------------------------------------------------
 LANGUAGES = {
     "auto": "Auto Detect",
@@ -57,6 +57,15 @@ LANGUAGES = {
 }
 
 # --------------------------------------------------
+# BACKUP TRANSLATION SERVERS
+# --------------------------------------------------
+TRANSLATE_ENDPOINTS = [
+    "https://libretranslate.com/translate",
+    "https://translate.argosopentech.com/translate",
+    "https://libretranslate.de/translate"
+]
+
+# --------------------------------------------------
 # SESSION STATE
 # --------------------------------------------------
 if "history" not in st.session_state:
@@ -66,7 +75,7 @@ if "history" not in st.session_state:
 # UI
 # --------------------------------------------------
 st.title("🌍 Multilingual Language Translator")
-st.caption(f"Supports {len(LANGUAGES)-1} reliable languages (no billing required)")
+st.caption(f"Supports {len(LANGUAGES)-1} reliable languages")
 
 text = st.text_area(
     "✍️ Enter text to translate",
@@ -96,24 +105,37 @@ enable_audio = st.checkbox("🔊 Enable Text-to-Speech")
 slow_audio = st.checkbox("🐢 Slow Speech")
 
 # --------------------------------------------------
-# TRANSLATION FUNCTION (CORRECT & STABLE)
+# SAFE TRANSLATION FUNCTION (RETRY + JSON)
 # --------------------------------------------------
 def translate_text(text, source, target):
-    url = "https://libretranslate.de/translate"
-
     payload = {
         "q": text,
+        "source": "auto" if source == "auto" else source,
         "target": target,
-        "format": "text",
-        "source": "auto" if source == "auto" else source
+        "format": "text"
     }
 
-    r = requests.post(url, data=payload, timeout=15)
-    r.raise_for_status()
-    return r.json()["translatedText"]
+    headers = {"Content-Type": "application/json"}
+
+    for url in TRANSLATE_ENDPOINTS:
+        try:
+            r = requests.post(
+                url,
+                json=payload,
+                headers=headers,
+                timeout=15
+            )
+            r.raise_for_status()
+            data = r.json()
+            if "translatedText" in data:
+                return data["translatedText"]
+        except Exception:
+            continue
+
+    raise RuntimeError("All translation servers failed")
 
 # --------------------------------------------------
-# TRANSLATE ACTION
+# TRANSLATE BUTTON
 # --------------------------------------------------
 if st.button("🚀 Translate") and text.strip():
     try:
@@ -137,7 +159,7 @@ if st.button("🚀 Translate") and text.strip():
         )
 
         # ------------------------------
-        # TEXT TO SPEECH (BEST EFFORT)
+        # TEXT TO SPEECH
         # ------------------------------
         if enable_audio:
             try:
@@ -156,7 +178,7 @@ if st.button("🚀 Translate") and text.strip():
                 st.warning("Audio not supported for this language.")
 
     except Exception:
-        st.error("❌ Translation failed. Please try again later.")
+        st.error("❌ Translation servers are busy. Please try again.")
 
 # --------------------------------------------------
 # HISTORY
