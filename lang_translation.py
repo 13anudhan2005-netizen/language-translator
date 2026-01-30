@@ -1,5 +1,5 @@
 import streamlit as st
-import requests
+from deep_translator import GoogleTranslator
 from gtts import gTTS
 import os
 import uuid
@@ -14,56 +14,122 @@ st.set_page_config(
 )
 
 # --------------------------------------------------
-# STABLE LANGUAGE LIST (~40)
+# LANGUAGE LIST (GoogleTranslator supports many)
 # --------------------------------------------------
 LANGUAGES = {
+    LANGUAGES = {
     "auto": "Auto Detect",
-    "en": "English",
-    "hi": "Hindi",
-    "te": "Telugu",
-    "ta": "Tamil",
-    "kn": "Kannada",
-    "ml": "Malayalam",
-    "mr": "Marathi",
-    "bn": "Bengali",
-    "gu": "Gujarati",
-    "pa": "Punjabi",
-    "ur": "Urdu",
-    "fr": "French",
-    "de": "German",
-    "es": "Spanish",
-    "it": "Italian",
-    "pt": "Portuguese",
-    "ru": "Russian",
+
+    "af": "Afrikaans",
+    "sq": "Albanian",
+    "am": "Amharic",
     "ar": "Arabic",
-    "zh": "Chinese",
-    "ja": "Japanese",
-    "ko": "Korean",
+    "hy": "Armenian",
+    "az": "Azerbaijani",
+    "eu": "Basque",
+    "be": "Belarusian",
+    "bn": "Bengali",
+    "bs": "Bosnian",
+    "bg": "Bulgarian",
+    "ca": "Catalan",
+    "ceb": "Cebuano",
+    "ny": "Chichewa",
+    "zh-CN": "Chinese (Simplified)",
+    "zh-TW": "Chinese (Traditional)",
+    "co": "Corsican",
+    "hr": "Croatian",
+    "cs": "Czech",
+    "da": "Danish",
     "nl": "Dutch",
-    "sv": "Swedish",
+    "en": "English",
+    "eo": "Esperanto",
+    "et": "Estonian",
+    "tl": "Filipino",
     "fi": "Finnish",
+    "fr": "French",
+    "fy": "Frisian",
+    "gl": "Galician",
+    "ka": "Georgian",
+    "de": "German",
+    "el": "Greek",
+    "gu": "Gujarati",
+    "ht": "Haitian Creole",
+    "ha": "Hausa",
+    "haw": "Hawaiian",
+    "he": "Hebrew",
+    "hi": "Hindi",
+    "hmn": "Hmong",
+    "hu": "Hungarian",
+    "is": "Icelandic",
+    "ig": "Igbo",
+    "id": "Indonesian",
+    "ga": "Irish",
+    "it": "Italian",
+    "ja": "Japanese",
+    "jv": "Javanese",
+    "kn": "Kannada",
+    "kk": "Kazakh",
+    "km": "Khmer",
+    "rw": "Kinyarwanda",
+    "ko": "Korean",
+    "ku": "Kurdish (Kurmanji)",
+    "ky": "Kyrgyz",
+    "lo": "Lao",
+    "la": "Latin",
+    "lv": "Latvian",
+    "lt": "Lithuanian",
+    "lb": "Luxembourgish",
+    "mk": "Macedonian",
+    "mg": "Malagasy",
+    "ms": "Malay",
+    "ml": "Malayalam",
+    "mt": "Maltese",
+    "mi": "Maori",
+    "mr": "Marathi",
+    "mn": "Mongolian",
+    "my": "Myanmar (Burmese)",
+    "ne": "Nepali",
+    "no": "Norwegian",
+    "ps": "Pashto",
+    "fa": "Persian",
     "pl": "Polish",
+    "pt": "Portuguese",
+    "pa": "Punjabi",
+    "ro": "Romanian",
+    "ru": "Russian",
+    "sm": "Samoan",
+    "gd": "Scots Gaelic",
+    "sr": "Serbian",
+    "st": "Sesotho",
+    "sn": "Shona",
+    "sd": "Sindhi",
+    "si": "Sinhala",
+    "sk": "Slovak",
+    "sl": "Slovenian",
+    "so": "Somali",
+    "es": "Spanish",
+    "su": "Sundanese",
+    "sw": "Swahili",
+    "sv": "Swedish",
+    "tg": "Tajik",
+    "ta": "Tamil",
+    "te": "Telugu",
+    "th": "Thai",
     "tr": "Turkish",
     "uk": "Ukrainian",
-    "ro": "Romanian",
-    "el": "Greek",
-    "hu": "Hungarian",
-    "cs": "Czech",
-    "sk": "Slovak",
-    "id": "Indonesian",
-    "ms": "Malay",
-    "th": "Thai",
-    "vi": "Vietnamese"
+    "ur": "Urdu",
+    "ug": "Uyghur",
+    "uz": "Uzbek",
+    "vi": "Vietnamese",
+    "cy": "Welsh",
+    "xh": "Xhosa",
+    "yi": "Yiddish",
+    "yo": "Yoruba",
+    "zu": "Zulu",
+    "or": "Odia"
 }
 
-# --------------------------------------------------
-# BACKUP TRANSLATION SERVERS
-# --------------------------------------------------
-TRANSLATE_ENDPOINTS = [
-    "https://libretranslate.com/translate",
-    "https://translate.argosopentech.com/translate",
-    "https://libretranslate.de/translate"
-]
+}
 
 # --------------------------------------------------
 # SESSION STATE
@@ -75,7 +141,7 @@ if "history" not in st.session_state:
 # UI
 # --------------------------------------------------
 st.title("🌍 Multilingual Language Translator")
-st.caption(f"Supports {len(LANGUAGES)-1} reliable languages")
+st.caption(f"Supports {len(LANGUAGES)-1}+ languages (stable & cloud-safe)")
 
 text = st.text_area(
     "✍️ Enter text to translate",
@@ -105,42 +171,15 @@ enable_audio = st.checkbox("🔊 Enable Text-to-Speech")
 slow_audio = st.checkbox("🐢 Slow Speech")
 
 # --------------------------------------------------
-# SAFE TRANSLATION FUNCTION (RETRY + JSON)
-# --------------------------------------------------
-def translate_text(text, source, target):
-    payload = {
-        "q": text,
-        "source": "auto" if source == "auto" else source,
-        "target": target,
-        "format": "text"
-    }
-
-    headers = {"Content-Type": "application/json"}
-
-    for url in TRANSLATE_ENDPOINTS:
-        try:
-            r = requests.post(
-                url,
-                json=payload,
-                headers=headers,
-                timeout=15
-            )
-            r.raise_for_status()
-            data = r.json()
-            if "translatedText" in data:
-                return data["translatedText"]
-        except Exception:
-            continue
-
-    raise RuntimeError("All translation servers failed")
-
-# --------------------------------------------------
-# TRANSLATE BUTTON
+# TRANSLATION
 # --------------------------------------------------
 if st.button("🚀 Translate") and text.strip():
     try:
         with st.spinner("Translating..."):
-            translated = translate_text(text, src_lang, tgt_lang)
+            translated = GoogleTranslator(
+                source=src_lang,
+                target=tgt_lang
+            ).translate(text)
 
         st.subheader("✅ Translated Text")
         st.text_area("", translated, height=180)
@@ -166,7 +205,7 @@ if st.button("🚀 Translate") and text.strip():
                 fname = f"audio_{uuid.uuid4().hex}.mp3"
                 gTTS(
                     text=translated,
-                    lang=tgt_lang if tgt_lang != "auto" else "en",
+                    lang=tgt_lang[:2],
                     slow=slow_audio
                 ).save(fname)
 
@@ -177,8 +216,8 @@ if st.button("🚀 Translate") and text.strip():
             except:
                 st.warning("Audio not supported for this language.")
 
-    except Exception:
-        st.error("❌ Translation servers are busy. Please try again.")
+    except Exception as e:
+        st.error("❌ Translation failed. Please try again.")
 
 # --------------------------------------------------
 # HISTORY
