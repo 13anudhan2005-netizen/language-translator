@@ -2,7 +2,6 @@ import streamlit as st
 import requests
 from langdetect import detect
 from gtts import gTTS
-import base64
 import os
 import uuid
 
@@ -16,33 +15,23 @@ st.set_page_config(
 )
 
 # --------------------------------------------------
-# SUPPORTED LANGUAGES (100+ via API)
+# GET 100+ LANGUAGES FROM API
 # --------------------------------------------------
-LANGUAGES = {
-    "auto": "Auto Detect",
-    "en": "English",
-    "hi": "Hindi",
-    "te": "Telugu",
-    "ta": "Tamil",
-    "kn": "Kannada",
-    "ml": "Malayalam",
-    "mr": "Marathi",
-    "bn": "Bengali",
-    "gu": "Gujarati",
-    "pa": "Punjabi",
-    "ur": "Urdu",
-    "fr": "French",
-    "de": "German",
-    "es": "Spanish",
-    "it": "Italian",
-    "pt": "Portuguese",
-    "ru": "Russian",
-    "ar": "Arabic",
-    "zh": "Chinese",
-    "ja": "Japanese",
-    "ko": "Korean"
-    # LibreTranslate supports many more automatically
-}
+@st.cache_data
+def get_languages():
+    url = "https://libretranslate.de/languages"
+    response = requests.get(url, timeout=10)
+    response.raise_for_status()
+
+    langs = response.json()
+    lang_map = {"auto": "Auto Detect"}
+
+    for lang in langs:
+        lang_map[lang["code"]] = lang["name"]
+
+    return lang_map
+
+LANGUAGES = get_languages()
 
 # --------------------------------------------------
 # SESSION STATE
@@ -54,7 +43,7 @@ if "history" not in st.session_state:
 # UI
 # --------------------------------------------------
 st.title("🌍 Multilingual Language Translator")
-st.caption("Supports 100+ languages • Fast & Cloud-ready")
+st.caption(f"Supports {len(LANGUAGES) - 1}+ languages • Fast & Cloud-Ready")
 
 input_text = st.text_area(
     "✍️ Enter text to translate",
@@ -62,7 +51,7 @@ input_text = st.text_area(
     placeholder="Type any language here..."
 )
 
-col1, col2, col3 = st.columns([3, 1, 3])
+col1, col2 = st.columns(2)
 
 with col1:
     src_lang = st.selectbox(
@@ -72,7 +61,7 @@ with col1:
         index=0
     )
 
-with col3:
+with col2:
     tgt_lang = st.selectbox(
         "Target Language",
         list(LANGUAGES.keys())[1:],
@@ -84,7 +73,7 @@ enable_audio = st.checkbox("🔊 Enable Text-to-Speech")
 slow_audio = st.checkbox("🐢 Slow Speech")
 
 # --------------------------------------------------
-# TRANSLATION FUNCTION (API)
+# TRANSLATION FUNCTION
 # --------------------------------------------------
 def translate_text(text, source, target):
     url = "https://libretranslate.de/translate"
@@ -99,7 +88,7 @@ def translate_text(text, source, target):
     return response.json()["translatedText"]
 
 # --------------------------------------------------
-# TRANSLATION ACTION
+# TRANSLATE BUTTON
 # --------------------------------------------------
 if st.button("🚀 Translate") and input_text.strip():
 
@@ -129,7 +118,7 @@ if st.button("🚀 Translate") and input_text.strip():
             "target": LANGUAGES.get(tgt_lang, tgt_lang)
         })
 
-        # Download text
+        # Download translated text
         st.download_button(
             "📄 Download Text",
             translated_text,
@@ -144,20 +133,19 @@ if st.button("🚀 Translate") and input_text.strip():
                 audio_file = f"audio_{uuid.uuid4().hex}.mp3"
                 tts = gTTS(
                     text=translated_text,
-                    lang=tgt_lang,
+                    lang=tgt_lang[:2],
                     slow=slow_audio
                 )
                 tts.save(audio_file)
 
                 with open(audio_file, "rb") as f:
-                    audio_bytes = f.read()
-                    st.audio(audio_bytes, format="audio/mp3")
+                    st.audio(f.read(), format="audio/mp3")
 
                 os.remove(audio_file)
             except:
                 st.warning("Audio not supported for this language.")
 
-    except Exception as e:
+    except Exception:
         st.error("❌ Translation failed. Please try again later.")
 
 # --------------------------------------------------
