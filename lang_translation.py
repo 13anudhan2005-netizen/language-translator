@@ -14,10 +14,9 @@ st.set_page_config(
 )
 
 # --------------------------------------------------
-# LANGUAGE LIST (GoogleTranslator supports many)
+# LANGUAGE LIST (100+ – FIXED)
 # --------------------------------------------------
 LANGUAGES = {
-    LANGUAGES = {
     "auto": "Auto Detect",
 
     "af": "Afrikaans",
@@ -129,8 +128,6 @@ LANGUAGES = {
     "or": "Odia"
 }
 
-}
-
 # --------------------------------------------------
 # SESSION STATE
 # --------------------------------------------------
@@ -141,7 +138,7 @@ if "history" not in st.session_state:
 # UI
 # --------------------------------------------------
 st.title("🌍 Multilingual Language Translator")
-st.caption(f"Supports {len(LANGUAGES)-1}+ languages (stable & cloud-safe)")
+st.caption(f"Supports {len(LANGUAGES)-1}+ languages")
 
 text = st.text_area(
     "✍️ Enter text to translate",
@@ -202,10 +199,13 @@ if st.button("🚀 Translate") and text.strip():
         # ------------------------------
         if enable_audio:
             try:
+                # gTTS only supports short language codes
+                tts_lang = tgt_lang.split("-")[0]
+
                 fname = f"audio_{uuid.uuid4().hex}.mp3"
                 gTTS(
                     text=translated,
-                    lang=tgt_lang[:2],
+                    lang=tts_lang,
                     slow=slow_audio
                 ).save(fname)
 
