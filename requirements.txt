@@ -1,5 +1,7 @@
 streamlit>=1.30.0
-deep-translator==1.11.4
+transformers>=4.36.0
+sentencepiece>=0.1.99
+torch>=2.0.0
 langdetect==1.0.9
 gTTS==2.5.1
 pandas>=2.0.0
