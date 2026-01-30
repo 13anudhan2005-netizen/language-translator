@@ -1,5 +1,5 @@
 import streamlit as st
-from deep_translator import GoogleTranslator
+from transformers import pipeline, AutoTokenizer
 from langdetect import detect
 from gtts import gTTS
 import base64
@@ -16,29 +16,26 @@ st.set_page_config(
 )
 
 # --------------------------------------------------
-# LANGUAGE MAP (safe & supported)
+# LOAD MODEL (200+ LANGUAGES)
 # --------------------------------------------------
-LANGUAGES = {
-    "auto": "Auto Detect",
-    "en": "English",
-    "hi": "Hindi",
-    "te": "Telugu",
-    "ta": "Tamil",
-    "fr": "French",
-    "de": "German",
-    "es": "Spanish",
-    "ur": "Urdu",
-    "bn": "Bengali",
-    "mr": "Marathi",
-    "gu": "Gujarati",
-    "kn": "Kannada",
-    "ml": "Malayalam",
-    "pa": "Punjabi",
-    "zh-CN": "Chinese",
-    "ja": "Japanese",
-    "ko": "Korean",
-    "ru": "Russian"
-}
+MODEL_NAME = "facebook/nllb-200-distilled-600M"
+
+@st.cache_resource
+def load_model():
+    translator = pipeline("translation", model=MODEL_NAME)
+    tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
+    return translator, tokenizer
+
+translator, tokenizer = load_model()
+
+# --------------------------------------------------
+# LANGUAGE CODES (AUTO 200+)
+# --------------------------------------------------
+LANGUAGE_CODES = list(tokenizer.lang_code_to_id.keys())
+
+# For UI display (keep codes readable)
+LANGUAGES = {code: code for code in LANGUAGE_CODES}
+LANGUAGES["auto"] = "Auto Detect"
 
 # --------------------------------------------------
 # SESSION STATE
@@ -50,7 +47,7 @@ if "history" not in st.session_state:
 # UI
 # --------------------------------------------------
 st.title("🌍 Multilingual Language Translator")
-st.caption("Translate • Detect Language • Listen • Download")
+st.caption(f"Supports {len(LANGUAGE_CODES)}+ languages using Meta NLLB")
 
 input_text = st.text_area(
     "✍️ Enter text to translate",
@@ -68,27 +65,41 @@ with col1:
         index=0
     )
 
-with col2:
-    st.markdown("<br>", unsafe_allow_html=True)
-    if st.button("🔁 Swap"):
-        src_lang, tgt_lang = (
-            st.session_state.get("tgt_lang", "en"),
-            st.session_state.get("src_lang", "auto")
-        )
-
 with col3:
     tgt_lang = st.selectbox(
         "Target Language",
-        list(LANGUAGES.keys())[1:],
-        format_func=lambda x: LANGUAGES[x],
+        [l for l in LANGUAGE_CODES],
         index=0
     )
 
-st.session_state.src_lang = src_lang
-st.session_state.tgt_lang = tgt_lang
-
-enable_audio = st.checkbox("🔊 Enable Text-to-Speech")
+enable_audio = st.checkbox("🔊 Enable Text-to-Speech (limited languages)")
 slow_audio = st.checkbox("🐢 Slow Speech")
+
+# --------------------------------------------------
+# LANGUAGE DETECTION (MAP TO NLLB)
+# --------------------------------------------------
+LANG_MAP = {
+    "en": "eng_Latn",
+    "hi": "hin_Deva",
+    "te": "tel_Telu",
+    "ta": "tam_Taml",
+    "kn": "kan_Knda",
+    "ml": "mal_Mlym",
+    "mr": "mar_Deva",
+    "fr": "fra_Latn",
+    "de": "deu_Latn",
+    "es": "spa_Latn",
+    "ru": "rus_Cyrl",
+    "ja": "jpn_Jpan",
+    "zh-cn": "zho_Hans"
+}
+
+def detect_nllb_lang(text):
+    try:
+        code = detect(text)
+        return LANG_MAP.get(code, "eng_Latn")
+    except:
+        return "eng_Latn"
 
 # --------------------------------------------------
 # TRANSLATION
@@ -98,16 +109,18 @@ if st.button("🚀 Translate") and input_text.strip():
     try:
         with st.spinner("Translating..."):
             if src_lang == "auto":
-                detected_lang = detect(input_text)
-                src_code = detected_lang
-                st.info(f"Detected language: {LANGUAGES.get(detected_lang, detected_lang)}")
+                src_code = detect_nllb_lang(input_text)
+                st.info(f"Detected source: {src_code}")
             else:
                 src_code = src_lang
 
-            translated_text = GoogleTranslator(
-                source=src_code,
-                target=tgt_lang
-            ).translate(input_text)
+            result = translator(
+                input_text,
+                src_lang=src_code,
+                tgt_lang=tgt_lang
+            )
+
+            translated_text = result[0]["translation_text"]
 
         st.subheader("✅ Translated Text")
         st.text_area("", translated_text, height=180)
@@ -116,11 +129,10 @@ if st.button("🚀 Translate") and input_text.strip():
         st.session_state.history.append({
             "input": input_text,
             "output": translated_text,
-            "source": LANGUAGES.get(src_lang, src_lang),
-            "target": LANGUAGES.get(tgt_lang, tgt_lang)
+            "source": src_code,
+            "target": tgt_lang
         })
 
-        # Download translated text
         st.download_button(
             "📄 Download Text",
             translated_text,
@@ -128,27 +140,24 @@ if st.button("🚀 Translate") and input_text.strip():
         )
 
         # --------------------------------------------------
-        # TEXT TO SPEECH
+        # TEXT TO SPEECH (BEST EFFORT)
         # --------------------------------------------------
         if enable_audio:
-            audio_file = f"audio_{uuid.uuid4().hex}.mp3"
-            tts = gTTS(text=translated_text, lang=tgt_lang, slow=slow_audio)
-            tts.save(audio_file)
+            try:
+                audio_file = f"audio_{uuid.uuid4().hex}.mp3"
+                tts = gTTS(text=translated_text, lang=tgt_lang[:2], slow=slow_audio)
+                tts.save(audio_file)
 
-            with open(audio_file, "rb") as f:
-                audio_bytes = f.read()
-                st.audio(audio_bytes, format="audio/mp3")
+                with open(audio_file, "rb") as f:
+                    audio_bytes = f.read()
+                    st.audio(audio_bytes, format="audio/mp3")
 
-                b64 = base64.b64encode(audio_bytes).decode()
-                st.markdown(
-                    f'<a href="data:audio/mp3;base64,{b64}" download="translation.mp3">⬇ Download Audio</a>',
-                    unsafe_allow_html=True
-                )
-
-            os.remove(audio_file)
+                os.remove(audio_file)
+            except:
+                st.warning("Audio not supported for this language.")
 
     except Exception as e:
-        st.error("❌ Translation failed. Please try again with shorter text or another language.")
+        st.error("❌ Translation failed. Try shorter text or another language.")
 
 # --------------------------------------------------
 # HISTORY
