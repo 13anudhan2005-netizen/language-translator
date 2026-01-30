@@ -1,6 +1,5 @@
 import streamlit as st
 import requests
-from langdetect import detect
 from gtts import gTTS
 import os
 import uuid
@@ -15,7 +14,7 @@ st.set_page_config(
 )
 
 # --------------------------------------------------
-# STABLE LANGUAGE LIST (NO BILLING, NO CRASH)
+# STABLE LANGUAGE LIST (~40 WORKING LANGUAGES)
 # --------------------------------------------------
 LANGUAGES = {
     "auto": "Auto Detect",
@@ -67,7 +66,7 @@ if "history" not in st.session_state:
 # UI
 # --------------------------------------------------
 st.title("🌍 Multilingual Language Translator")
-st.caption(f"Supports {len(LANGUAGES)-1}+ reliable languages (no billing required)")
+st.caption(f"Supports {len(LANGUAGES)-1} reliable languages (no billing required)")
 
 text = st.text_area(
     "✍️ Enter text to translate",
@@ -97,16 +96,18 @@ enable_audio = st.checkbox("🔊 Enable Text-to-Speech")
 slow_audio = st.checkbox("🐢 Slow Speech")
 
 # --------------------------------------------------
-# TRANSLATION FUNCTION
+# TRANSLATION FUNCTION (CORRECT & STABLE)
 # --------------------------------------------------
 def translate_text(text, source, target):
     url = "https://libretranslate.de/translate"
+
     payload = {
         "q": text,
-        "source": source,
         "target": target,
-        "format": "text"
+        "format": "text",
+        "source": "auto" if source == "auto" else source
     }
+
     r = requests.post(url, data=payload, timeout=15)
     r.raise_for_status()
     return r.json()["translatedText"]
@@ -117,9 +118,6 @@ def translate_text(text, source, target):
 if st.button("🚀 Translate") and text.strip():
     try:
         with st.spinner("Translating..."):
-            if src_lang == "auto":
-                src_lang = detect(text)
-
             translated = translate_text(text, src_lang, tgt_lang)
 
         st.subheader("✅ Translated Text")
@@ -138,12 +136,21 @@ if st.button("🚀 Translate") and text.strip():
             file_name="translation.txt"
         )
 
+        # ------------------------------
+        # TEXT TO SPEECH (BEST EFFORT)
+        # ------------------------------
         if enable_audio:
             try:
                 fname = f"audio_{uuid.uuid4().hex}.mp3"
-                gTTS(text=translated, lang=tgt_lang, slow=slow_audio).save(fname)
+                gTTS(
+                    text=translated,
+                    lang=tgt_lang if tgt_lang != "auto" else "en",
+                    slow=slow_audio
+                ).save(fname)
+
                 with open(fname, "rb") as f:
                     st.audio(f.read(), format="audio/mp3")
+
                 os.remove(fname)
             except:
                 st.warning("Audio not supported for this language.")
