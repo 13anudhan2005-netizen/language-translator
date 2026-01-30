@@ -15,19 +15,24 @@ st.set_page_config(
 )
 
 # --------------------------------------------------
-# GET 100+ LANGUAGES FROM API
+# GOOGLE API KEY
+# --------------------------------------------------
+API_KEY = st.secrets["AIzaSyBNFIRG-CrscRbi7D5ms2LNL8-jxs41AYA"]
+
+# --------------------------------------------------
+# LOAD 100+ LANGUAGES FROM GOOGLE
 # --------------------------------------------------
 @st.cache_data
 def get_languages():
-    url = "https://libretranslate.de/languages"
-    response = requests.get(url, timeout=10)
-    response.raise_for_status()
+    url = f"https://translation.googleapis.com/language/translate/v2/languages?key={API_KEY}&target=en"
+    res = requests.get(url, timeout=10)
+    res.raise_for_status()
 
-    langs = response.json()
+    langs = res.json()["data"]["languages"]
     lang_map = {"auto": "Auto Detect"}
 
     for lang in langs:
-        lang_map[lang["code"]] = lang["name"]
+        lang_map[lang["language"]] = lang.get("name", lang["language"])
 
     return lang_map
 
@@ -43,9 +48,9 @@ if "history" not in st.session_state:
 # UI
 # --------------------------------------------------
 st.title("🌍 Multilingual Language Translator")
-st.caption(f"Supports {len(LANGUAGES) - 1}+ languages • Fast & Cloud-Ready")
+st.caption(f"Supports {len(LANGUAGES)-1}+ languages using Google Translate API")
 
-input_text = st.text_area(
+text = st.text_area(
     "✍️ Enter text to translate",
     height=150,
     placeholder="Type any language here..."
@@ -76,49 +81,38 @@ slow_audio = st.checkbox("🐢 Slow Speech")
 # TRANSLATION FUNCTION
 # --------------------------------------------------
 def translate_text(text, source, target):
-    url = "https://libretranslate.de/translate"
+    url = f"https://translation.googleapis.com/language/translate/v2?key={API_KEY}"
     payload = {
         "q": text,
-        "source": source,
-        "target": target,
-        "format": "text"
+        "target": target
     }
-    response = requests.post(url, data=payload, timeout=15)
-    response.raise_for_status()
-    return response.json()["translatedText"]
+    if source != "auto":
+        payload["source"] = source
+
+    res = requests.post(url, data=payload, timeout=15)
+    res.raise_for_status()
+    return res.json()["data"]["translations"][0]["translatedText"]
 
 # --------------------------------------------------
-# TRANSLATE BUTTON
+# TRANSLATE ACTION
 # --------------------------------------------------
-if st.button("🚀 Translate") and input_text.strip():
+if st.button("🚀 Translate") and text.strip():
 
     try:
         with st.spinner("Translating..."):
-            if src_lang == "auto":
-                detected = detect(input_text)
-                src_code = detected
-                st.info(f"Detected language: {LANGUAGES.get(detected, detected)}")
-            else:
-                src_code = src_lang
-
-            translated_text = translate_text(
-                input_text,
-                src_code,
-                tgt_lang
-            )
+            translated_text = translate_text(text, src_lang, tgt_lang)
 
         st.subheader("✅ Translated Text")
         st.text_area("", translated_text, height=180)
 
         # Save history
         st.session_state.history.append({
-            "input": input_text,
+            "input": text,
             "output": translated_text,
             "source": LANGUAGES.get(src_lang, src_lang),
             "target": LANGUAGES.get(tgt_lang, tgt_lang)
         })
 
-        # Download translated text
         st.download_button(
             "📄 Download Text",
             translated_text,
@@ -126,7 +120,7 @@ if st.button("🚀 Translate") and input_text.strip():
         )
 
         # --------------------------------------------------
-        # TEXT TO SPEECH (BEST EFFORT)
+        # TEXT TO SPEECH
         # --------------------------------------------------
         if enable_audio:
             try:
@@ -145,15 +139,15 @@ if st.button("🚀 Translate") and input_text.strip():
             except:
                 st.warning("Audio not supported for this language.")
 
-    except Exception:
-        st.error("❌ Translation failed. Please try again later.")
+    except Exception as e:
+        st.error("❌ Translation failed. Check API key or quota.")
 
 # --------------------------------------------------
 # HISTORY
 # --------------------------------------------------
 if st.session_state.history:
     st.divider()
-    st.subheader("🕘 Translation History (Session)")
+    st.subheader("🕘 Translation History")
 
     for i, item in enumerate(reversed(st.session_state.history[-5:]), 1):
         st.markdown(
